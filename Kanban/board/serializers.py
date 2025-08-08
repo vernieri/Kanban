@@ -7,10 +7,9 @@ class SubTaskSerializer(serializers.ModelSerializer):
         fields = '__all__'
 
 class TaskSerializer(serializers.ModelSerializer):
-    subtasks = SubTaskSerializer(many=True, read_only=True)
     class Meta:
         model = Task
-        fields = '__all__'
+        fields = '__all__'  # já inclui color
 
 class EpicSerializer(serializers.ModelSerializer):
     # Listar tasks do épico (read-only)

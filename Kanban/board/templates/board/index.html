@@ -24,6 +24,7 @@
     .subtasks .st-row { display:flex; align-items:center; justify-content:space-between; gap:8px; padding:6px 0; }
     .subtasks .st-title { display:flex; align-items:center; gap:8px; }
     details > summary { cursor:pointer; user-select:none; }
+    .swatch { width:12px; height:12px; border-radius:3px; border:1px solid rgba(0,0,0,.1); }
   </style>
 </head>
 <body>
@@ -48,13 +49,23 @@
   const csrftoken = getCookie('csrftoken');
 
   // ---- Config ----
-  const API_BASE = '/api';   // ajuste se necessário
-  const BOARD_ID = null;     // ou defina um id fixo (ex.: 1)
+  const API_BASE = '/api';
+  const BOARD_ID = null;
 
   // ---- Estado ----
   let state = { board: null, columns: [], tasksByColumn: {} };
 
-  // ---- Fetch board (com columns->tasks->subtasks) ----
+  // ---- Util cor ----
+  function isHexColor(v){
+    return /^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/.test(v.trim());
+  }
+  function safeColor(v, fallback='#fafafa'){
+    if (!v) return fallback;
+    const c = v.trim();
+    return isHexColor(c) ? c : fallback;
+  }
+
+  // ---- Fetch board ----
   async function fetchBoard() {
     if (BOARD_ID) {
       const r = await fetch(`${API_BASE}/boards/${BOARD_ID}/`);
@@ -90,7 +101,7 @@
       colEl.className = 'column';
       colEl.dataset.columnId = col.id;
 
-      // Header com editar/excluir coluna
+      // Header com editar/excluir
       const header = document.createElement('div');
       header.className = 'column-header row';
 
@@ -113,7 +124,7 @@
       header.appendChild(titleWrap);
       header.appendChild(colBtns);
 
-      // Ações por coluna (novo task)
+      // Ações por coluna (nova task)
       const actions = document.createElement('div');
       actions.style = 'padding:8px 12px;border-bottom:1px solid #f0f2f5;display:flex;gap:8px';
       const btnAddTask = document.createElement('button');
@@ -122,7 +133,7 @@
       btnAddTask.addEventListener('click', () => onNewTask(col.id));
       actions.appendChild(btnAddTask);
 
-      // Lista de tasks (com DnD)
+      // Lista de tasks
       const tasksEl = document.createElement('div');
       tasksEl.className = 'cards';
       tasksEl.dataset.columnId = col.id;
@@ -151,12 +162,28 @@
     el.addEventListener('dragstart', onDragStart);
     el.addEventListener('dragend', onDragEnd);
 
-    // Topo com título + botões
+    // cor
+    const bg = safeColor(task.color, '#fafafa');
+    el.style.background = bg;
+
+    // topo
     const top = document.createElement('div');
     top.className = 'row';
 
+    const left = document.createElement('div');
+    left.style.display = 'flex';
+    left.style.alignItems = 'center';
+    left.style.gap = '8px';
+
+    const sw = document.createElement('span');
+    sw.className = 'swatch';
+    sw.style.background = bg;
+
     const title = document.createElement('div');
     title.textContent = task.title;
+
+    left.appendChild(sw);
+    left.appendChild(title);
 
     const taskBtns = document.createElement('div');
     taskBtns.className = 'row';
@@ -182,7 +209,7 @@
 
     taskBtns.appendChild(btnEdit);
     taskBtns.appendChild(btnDel);
-    top.appendChild(title);
+    top.appendChild(left);
     top.appendChild(taskBtns);
     el.appendChild(top);
 
@@ -194,7 +221,7 @@
       el.appendChild(desc);
     }
 
-    // Subtasks (details)
+    // Subtasks
     const details = document.createElement('details');
     details.className = 'subtasks';
     const summary = document.createElement('summary');
@@ -204,7 +231,6 @@
     const stWrap = document.createElement('div');
     stWrap.dataset.taskId = task.id;
 
-    // Botão nova SubTask
     const stActions = document.createElement('div');
     stActions.style = 'margin:6px 0 8px 0';
     const btnNewSub = document.createElement('button');
@@ -217,7 +243,6 @@
     stActions.appendChild(btnNewSub);
     stWrap.appendChild(stActions);
 
-    // Lista de SubTasks
     (task.subtasks || []).forEach(st => {
       stWrap.appendChild(renderSubTask(st));
     });
@@ -272,7 +297,7 @@
   }
 
   // ---- DnD ----
-  let dragging = null; // {el, fromColumnId}
+  let dragging = null;
   function onDragStart(e) {
     dragging = { el: e.currentTarget, fromColumnId: e.currentTarget.dataset.columnId };
     e.dataTransfer.setData('text/plain', e.currentTarget.dataset.taskId);
@@ -290,7 +315,6 @@
     const taskId = e.dataTransfer.getData('text/plain');
     if (!taskId || !targetColumnId) return;
 
-    // order básico = final da coluna
     const currentTasks = Array.from(e.currentTarget.querySelectorAll('.task'));
     const newOrder = currentTasks.length + (dragging ? 0 : 1);
 
@@ -356,13 +380,16 @@
   async function onNewTask(columnId) {
     const title = prompt('Título da task:'); if (!title) return;
     const description = prompt('Descrição (opcional):') || '';
+    let color = prompt('Cor HEX (ex.: #ffcc00). Deixe vazio para padrão:') || '';
+    color = safeColor(color, '#fafafa');
+
     const tasks = state.tasksByColumn[columnId] || [];
     const order = tasks.length + 1;
 
     const r = await fetch(`${API_BASE}/tasks/`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrftoken },
-      body: JSON.stringify({ column: columnId, title, description, order })
+      body: JSON.stringify({ column: columnId, title, description, order, color })
     });
     if (!r.ok) { console.error(await r.text()); alert('Falha ao criar task.'); return; }
     await reload();
@@ -371,9 +398,14 @@
   async function onEditTask(task) {
     const newTitle = prompt('Novo título da task:', task.title || ''); if (newTitle === null) return;
     const newDesc = prompt('Nova descrição (opcional):', task.description || '');
+    let newColor = prompt('Nova cor HEX (ex.: #ffcc00). Deixe vazio para manter:', task.color || '');
+    if (newColor === null) return; // cancelou na cor
+    newColor = newColor.trim() === '' ? (task.color || '') : safeColor(newColor, task.color || '#fafafa');
+
     const payload = {};
     if (newTitle !== task.title) payload.title = newTitle;
     if (newDesc !== task.description) payload.description = newDesc;
+    if (newColor !== (task.color || '')) payload.color = newColor;
     if (Object.keys(payload).length === 0) return;
 
     const r = await fetch(`${API_BASE}/tasks/${task.id}/`, {
@@ -398,7 +430,7 @@
   async function onNewSubTask(taskId) {
     const title = prompt('Título da SubTask:'); if (!title) return;
     const description = prompt('Descrição (opcional):') || '';
-    const order = 1; // simples (poderia calcular lendo a task no estado)
+    const order = 1;
 
     const r = await fetch(`${API_BASE}/subtasks/`, {
       method: 'POST',
