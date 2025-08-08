@@ -27,8 +27,14 @@ class Task(models.Model):
     title = models.CharField(max_length=200)
     description = models.TextField(blank=True)
     order = models.PositiveIntegerField(default=0)
-    class Meta: ordering = ['order']
-    def __str__(self): return self.title
+    color = models.CharField(max_length=7, blank=True, default="#fafafa")  # cor hex, ex: #FF0000
+
+    class Meta:
+        ordering = ['order']
+
+    def __str__(self):
+        return self.title
+
 
 # === NOVO: SubTask ===
 class SubTask(models.Model):

@@ -25,17 +25,12 @@ class EpicViewSet(viewsets.ModelViewSet):
     queryset = Epic.objects.all()
     serializer_class = EpicSerializer
 
-# ===== NOVO: Tasks =====
 class TaskViewSet(viewsets.ModelViewSet):
     queryset = Task.objects.all()
     serializer_class = TaskSerializer
 
     @action(detail=True, methods=['patch'])
     def move(self, request, pk=None):
-        """
-        PATCH /api/tasks/<id>/move/
-        { "column": <column_id>, "order": <int> }
-        """
         task = self.get_object()
         column_id = request.data.get("column")
         order = request.data.get("order", 0)
@@ -49,6 +44,7 @@ class TaskViewSet(viewsets.ModelViewSet):
         task.order = order
         task.save()
         return Response(TaskSerializer(task).data, status=status.HTTP_200_OK)
+
 
 # ===== NOVO: SubTasks =====
 class SubTaskViewSet(viewsets.ModelViewSet):
