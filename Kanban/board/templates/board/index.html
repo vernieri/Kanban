@@ -2,7 +2,7 @@
 <html lang="pt-br">
 <head>
   <meta charset="utf-8" />
-  <title>Kanban</title>
+  <title>Kanban – Epics, Tasks e SubTasks</title>
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <style>
     :root { font-family: system-ui, Arial, sans-serif; }
@@ -10,22 +10,27 @@
     header { padding:16px 24px; background:#101828; color:#fff; font-weight:600; }
     .container { padding:24px; overflow-x:auto; }
     .board { display:flex; gap:16px; min-height:70vh; }
-    .column { background:#fff; border:1px solid #e5e7eb; border-radius:10px; width:320px; flex:0 0 320px; display:flex; flex-direction:column; }
+    .column { background:#fff; border:1px solid #e5e7eb; border-radius:10px; width:340px; flex:0 0 340px; display:flex; flex-direction:column; }
     .column-header { padding:12px 14px; border-bottom:1px solid #f0f2f5; font-weight:600; }
     .cards { padding:12px; display:flex; flex-direction:column; gap:10px; min-height:80px; }
-    .card { background:#fafafa; border:1px solid #e5e7eb; border-radius:8px; padding:10px 12px; cursor:grab; }
-    .card:active { cursor:grabbing; }
+    .task { background:#fafafa; border:1px solid #e5e7eb; border-radius:8px; padding:10px 12px; cursor:grab; }
+    .task:active { cursor:grabbing; }
     .drop-target { outline:2px dashed #9ca3af; outline-offset:-6px; }
     .muted { color:#6b7280; font-size:12px; }
+    .btn { padding:6px 10px; border:1px solid #e5e7eb; border-radius:8px; background:#fff; cursor:pointer; }
+    .btn-danger { border-color:#ef4444; color:#b91c1c; }
+    .row { display:flex; align-items:center; justify-content:space-between; gap:8px; }
+    .subtasks { margin-top:8px; border-top:1px dashed #e5e7eb; padding-top:8px; }
+    .subtasks .st-row { display:flex; align-items:center; justify-content:space-between; gap:8px; padding:6px 0; }
+    .subtasks .st-title { display:flex; align-items:center; gap:8px; }
+    details > summary { cursor:pointer; user-select:none; }
   </style>
 </head>
 <body>
-<header style="display:flex;align-items:center;gap:12px;justify-content:space-between">
+<header class="row">
   <div>Kanban</div>
-  <div>
-    <button id="btnNewColumn" style="padding:8px 12px;border:1px solid #e5e7eb;border-radius:8px;background:#fff;cursor:pointer">
-      + Nova Coluna
-    </button>
+  <div class="row" style="gap:12px">
+    <button id="btnNewColumn" class="btn">+ Nova Coluna</button>
   </div>
 </header>
 
@@ -35,7 +40,7 @@
 </div>
 
 <script>
-  // ---- Helpers CSRF (necessário para POST/PATCH/DELETE no Django) ----
+  // ---- CSRF ----
   function getCookie(name){
     const m = document.cookie.match('(^|;)\\s*' + name + '\\s*=\\s*([^;]+)');
     return m ? m.pop() : '';
@@ -43,13 +48,13 @@
   const csrftoken = getCookie('csrftoken');
 
   // ---- Config ----
-  const API_BASE = '/api';   // ajuste se tiver prefixo diferente
-  const BOARD_ID = null;     // se quiser travar num board específico (ex: 1)
+  const API_BASE = '/api';   // ajuste se necessário
+  const BOARD_ID = null;     // ou defina um id fixo (ex.: 1)
 
-  // ---- Estado em memória ----
-  let state = { board: null, columns: [], cardsByColumn: {} };
+  // ---- Estado ----
+  let state = { board: null, columns: [], tasksByColumn: {} };
 
-  // Carrega board
+  // ---- Fetch board (com columns->tasks->subtasks) ----
   async function fetchBoard() {
     if (BOARD_ID) {
       const r = await fetch(`${API_BASE}/boards/${BOARD_ID}/`);
@@ -60,19 +65,20 @@
       if (!r.ok) throw new Error('Falha ao listar boards');
       const list = await r.json();
       if (!Array.isArray(list) || list.length === 0) {
-        return { name: 'Sem boards', columns: [] };
+        return { id: null, name: 'Sem boards', columns: [] };
       }
       return list[0];
     }
   }
 
-  // Renderização
+  // ---- Render ----
   function render(boardData) {
     state.board = boardData;
     state.columns = boardData.columns || [];
-    state.cardsByColumn = {};
+    state.tasksByColumn = {};
     state.columns.forEach(col => {
-      state.cardsByColumn[col.id] = (col.cards || []).slice().sort((a,b)=>a.order-b.order);
+      const tasks = (col.tasks || []).slice().sort((a,b)=>a.order-b.order);
+      state.tasksByColumn[col.id] = tasks;
     });
 
     document.getElementById('boardName').textContent = `Board: ${boardData.name}`;
@@ -84,154 +90,222 @@
       colEl.className = 'column';
       colEl.dataset.columnId = col.id;
 
-      // Header com Editar/Excluir
+      // Header com editar/excluir coluna
       const header = document.createElement('div');
-      header.className = 'column-header';
-      header.style = 'display:flex;align-items:center;justify-content:space-between;gap:8px;';
+      header.className = 'column-header row';
 
       const titleWrap = document.createElement('div');
-      titleWrap.textContent = `${col.name}`;
+      titleWrap.textContent = col.name;
 
       const colBtns = document.createElement('div');
-      colBtns.style = 'display:flex;gap:8px;';
+      colBtns.className = 'row';
       const btnEditCol = document.createElement('button');
+      btnEditCol.className = 'btn';
       btnEditCol.textContent = 'Editar';
-      btnEditCol.style = 'padding:4px 8px;border:1px solid #e5e7eb;border-radius:8px;background:#fff;cursor:pointer';
       btnEditCol.addEventListener('click', () => onEditColumn(col.id, col.name));
-
       const btnDelCol = document.createElement('button');
+      btnDelCol.className = 'btn btn-danger';
       btnDelCol.textContent = 'Excluir';
-      btnDelCol.style = 'padding:4px 8px;border:1px solid #ef4444;border-radius:8px;background:#fff;cursor:pointer;color:#b91c1c';
       btnDelCol.addEventListener('click', () => onDeleteColumn(col.id, col.name));
-
       colBtns.appendChild(btnEditCol);
       colBtns.appendChild(btnDelCol);
 
       header.appendChild(titleWrap);
       header.appendChild(colBtns);
 
-      // Ações por coluna (Novo card)
+      // Ações por coluna (novo task)
       const actions = document.createElement('div');
       actions.style = 'padding:8px 12px;border-bottom:1px solid #f0f2f5;display:flex;gap:8px';
-      const btnAddCard = document.createElement('button');
-      btnAddCard.textContent = '+ Novo card';
-      btnAddCard.style = 'padding:6px 10px;border:1px solid #e5e7eb;border-radius:8px;background:#fff;cursor:pointer';
-      btnAddCard.addEventListener('click', () => onNewCard(col.id));
-      actions.appendChild(btnAddCard);
+      const btnAddTask = document.createElement('button');
+      btnAddTask.className = 'btn';
+      btnAddTask.textContent = '+ Nova Task';
+      btnAddTask.addEventListener('click', () => onNewTask(col.id));
+      actions.appendChild(btnAddTask);
 
-      const cardsEl = document.createElement('div');
-      cardsEl.className = 'cards';
-      cardsEl.dataset.columnId = col.id;
-      cardsEl.addEventListener('dragover', onDragOver);
-      cardsEl.addEventListener('drop', onDrop);
-      cardsEl.addEventListener('dragenter', e => cardsEl.classList.add('drop-target'));
-      cardsEl.addEventListener('dragleave', e => cardsEl.classList.remove('drop-target'));
+      // Lista de tasks (com DnD)
+      const tasksEl = document.createElement('div');
+      tasksEl.className = 'cards';
+      tasksEl.dataset.columnId = col.id;
+      tasksEl.addEventListener('dragover', onDragOver);
+      tasksEl.addEventListener('drop', onDrop);
+      tasksEl.addEventListener('dragenter', () => tasksEl.classList.add('drop-target'));
+      tasksEl.addEventListener('dragleave', () => tasksEl.classList.remove('drop-target'));
 
-      (state.cardsByColumn[col.id] || []).forEach(card => {
-        cardsEl.appendChild(renderCard(card));
+      (state.tasksByColumn[col.id] || []).forEach(task => {
+        tasksEl.appendChild(renderTask(task));
       });
 
       colEl.appendChild(header);
       colEl.appendChild(actions);
-      colEl.appendChild(cardsEl);
+      colEl.appendChild(tasksEl);
       root.appendChild(colEl);
     });
   }
 
-  function renderCard(card) {
+  function renderTask(task) {
     const el = document.createElement('div');
-    el.className = 'card';
+    el.className = 'task';
     el.draggable = true;
-    el.dataset.cardId = card.id;
-    el.dataset.columnId = card.column;
+    el.dataset.taskId = task.id;
+    el.dataset.columnId = task.column;
     el.addEventListener('dragstart', onDragStart);
     el.addEventListener('dragend', onDragEnd);
 
+    // Topo com título + botões
     const top = document.createElement('div');
-    top.style = 'display:flex;align-items:center;justify-content:space-between;gap:8px;';
+    top.className = 'row';
 
     const title = document.createElement('div');
-    title.textContent = card.title;
+    title.textContent = task.title;
 
-    const cardBtns = document.createElement('div');
-    cardBtns.style = 'display:flex;gap:6px;';
+    const taskBtns = document.createElement('div');
+    taskBtns.className = 'row';
+    taskBtns.style.gap = '6px';
+
     const btnEdit = document.createElement('button');
+    btnEdit.className = 'btn';
+    btnEdit.style.fontSize = '12px';
     btnEdit.textContent = 'Editar';
-    btnEdit.style = 'padding:2px 6px;border:1px solid #e5e7eb;border-radius:6px;background:#fff;cursor:pointer;font-size:12px';
     btnEdit.addEventListener('click', (e) => {
       e.stopPropagation();
-      onEditCard(card);
+      onEditTask(task);
     });
+
     const btnDel = document.createElement('button');
+    btnDel.className = 'btn btn-danger';
+    btnDel.style.fontSize = '12px';
     btnDel.textContent = 'Excluir';
-    btnDel.style = 'padding:2px 6px;border:1px solid #ef4444;border-radius:6px;background:#fff;cursor:pointer;font-size:12px;color:#b91c1c';
     btnDel.addEventListener('click', (e) => {
       e.stopPropagation();
-      onDeleteCard(card.id, card.title);
+      onDeleteTask(task.id, task.title);
     });
-    cardBtns.appendChild(btnEdit);
-    cardBtns.appendChild(btnDel);
 
+    taskBtns.appendChild(btnEdit);
+    taskBtns.appendChild(btnDel);
     top.appendChild(title);
-    top.appendChild(cardBtns);
+    top.appendChild(taskBtns);
     el.appendChild(top);
 
-    if (card.description) {
+    if (task.description) {
       const desc = document.createElement('div');
       desc.className = 'muted';
-      desc.style = 'margin-top:6px;';
-      desc.textContent = card.description;
+      desc.style.marginTop = '6px';
+      desc.textContent = task.description;
       el.appendChild(desc);
     }
+
+    // Subtasks (details)
+    const details = document.createElement('details');
+    details.className = 'subtasks';
+    const summary = document.createElement('summary');
+    summary.textContent = 'SubTasks';
+    details.appendChild(summary);
+
+    const stWrap = document.createElement('div');
+    stWrap.dataset.taskId = task.id;
+
+    // Botão nova SubTask
+    const stActions = document.createElement('div');
+    stActions.style = 'margin:6px 0 8px 0';
+    const btnNewSub = document.createElement('button');
+    btnNewSub.className = 'btn';
+    btnNewSub.textContent = '+ Nova SubTask';
+    btnNewSub.addEventListener('click', (e) => {
+      e.stopPropagation();
+      onNewSubTask(task.id);
+    });
+    stActions.appendChild(btnNewSub);
+    stWrap.appendChild(stActions);
+
+    // Lista de SubTasks
+    (task.subtasks || []).forEach(st => {
+      stWrap.appendChild(renderSubTask(st));
+    });
+
+    details.appendChild(stWrap);
+    el.appendChild(details);
 
     return el;
   }
 
-  // Drag-and-drop
-  let dragging = null; // {el, fromColumnId}
+  function renderSubTask(st) {
+    const row = document.createElement('div');
+    row.className = 'st-row';
 
-  function onDragStart(e) {
-    dragging = { el: e.currentTarget, fromColumnId: e.currentTarget.dataset.columnId };
-    e.dataTransfer.setData('text/plain', e.currentTarget.dataset.cardId);
-    e.dataTransfer.effectAllowed = 'move';
+    const left = document.createElement('div');
+    left.className = 'st-title';
+
+    const cb = document.createElement('input');
+    cb.type = 'checkbox';
+    cb.checked = !!st.is_done;
+    cb.addEventListener('change', () => toggleSubTaskDone(st));
+
+    const text = document.createElement('span');
+    text.textContent = st.title + (st.description ? ` — ${st.description}` : '');
+    if (st.is_done) text.style.textDecoration = 'line-through';
+
+    left.appendChild(cb);
+    left.appendChild(text);
+
+    const right = document.createElement('div');
+    right.className = 'row';
+    right.style.gap = '6px';
+
+    const btnEdit = document.createElement('button');
+    btnEdit.className = 'btn';
+    btnEdit.style.fontSize = '12px';
+    btnEdit.textContent = 'Editar';
+    btnEdit.addEventListener('click', () => onEditSubTask(st));
+
+    const btnDel = document.createElement('button');
+    btnDel.className = 'btn btn-danger';
+    btnDel.style.fontSize = '12px';
+    btnDel.textContent = 'Excluir';
+    btnDel.addEventListener('click', () => onDeleteSubTask(st));
+
+    right.appendChild(btnEdit);
+    right.appendChild(btnDel);
+
+    row.appendChild(left);
+    row.appendChild(right);
+    return row;
   }
 
+  // ---- DnD ----
+  let dragging = null; // {el, fromColumnId}
+  function onDragStart(e) {
+    dragging = { el: e.currentTarget, fromColumnId: e.currentTarget.dataset.columnId };
+    e.dataTransfer.setData('text/plain', e.currentTarget.dataset.taskId);
+    e.dataTransfer.effectAllowed = 'move';
+  }
   function onDragEnd() {
     dragging = null;
     document.querySelectorAll('.drop-target').forEach(n => n.classList.remove('drop-target'));
   }
-
-  function onDragOver(e) {
-    e.preventDefault(); // habilita drop
-    e.dataTransfer.dropEffect = 'move';
-  }
+  function onDragOver(e) { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; }
 
   async function onDrop(e) {
     e.preventDefault();
     const targetColumnId = e.currentTarget.dataset.columnId;
-    const cardId = e.dataTransfer.getData('text/plain');
-    if (!cardId || !targetColumnId) return;
+    const taskId = e.dataTransfer.getData('text/plain');
+    if (!taskId || !targetColumnId) return;
 
-    // Calcula "order" básico: joga no final da coluna alvo
-    const currentCards = Array.from(e.currentTarget.querySelectorAll('.card'));
-    const newOrder = currentCards.length + (dragging ? 0 : 1); // se o card ainda não foi inserido no DOM
+    // order básico = final da coluna
+    const currentTasks = Array.from(e.currentTarget.querySelectorAll('.task'));
+    const newOrder = currentTasks.length + (dragging ? 0 : 1);
 
-    // UI otimista
     if (dragging && dragging.el) {
       e.currentTarget.appendChild(dragging.el);
       dragging.el.dataset.columnId = targetColumnId;
     }
 
     try {
-      const r = await fetch(`${API_BASE}/cards/${cardId}/move/`, {
+      const r = await fetch(`${API_BASE}/tasks/${taskId}/move/`, {
         method: 'PATCH',
-        headers: {
-          'Content-Type': 'application/json',
-          'X-CSRFToken': csrftoken
-        },
+        headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrftoken },
         body: JSON.stringify({ column: Number(targetColumnId), order: newOrder })
       });
-      if (!r.ok) throw new Error('Falha ao mover card');
+      if (!r.ok) throw new Error('Falha ao mover task');
       await reload();
     } catch (err) {
       console.error(err);
@@ -239,142 +313,147 @@
     }
   }
 
-  // Criar nova coluna (toolbar do header)
+  // ---- Column CRUD ----
   document.addEventListener('click', (e) => {
     if (e.target && e.target.id === 'btnNewColumn') onNewColumn();
   });
 
   async function onNewColumn() {
-    if (!state.board || !state.board.id) {
-      alert('Crie um board pelo admin antes.');
-      return;
-    }
-    const name = prompt('Nome da nova coluna:');
-    if (!name) return;
-
+    if (!state.board || !state.board.id) { alert('Crie um board pelo admin antes.'); return; }
+    const name = prompt('Nome da nova coluna:'); if (!name) return;
     const order = (state.columns?.length || 0) + 1;
-    const payload = { board: state.board.id, name, order };
-
     const r = await fetch(`${API_BASE}/columns/`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrftoken },
-      body: JSON.stringify(payload)
+      body: JSON.stringify({ board: state.board.id, name, order })
     });
-    if (!r.ok) {
-      const t = await r.text();
-      console.error(t);
-      alert('Falha ao criar coluna.');
-      return;
-    }
+    if (!r.ok) { console.error(await r.text()); alert('Falha ao criar coluna.'); return; }
     await reload();
   }
 
-  // Editar/Excluir coluna
   async function onEditColumn(columnId, currentName) {
     const name = prompt('Novo nome da coluna:', currentName || '');
     if (!name || name === currentName) return;
-
     const r = await fetch(`${API_BASE}/columns/${columnId}/`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrftoken },
       body: JSON.stringify({ name })
     });
-    if (!r.ok) {
-      console.error(await r.text());
-      alert('Falha ao renomear coluna.');
-      return;
-    }
+    if (!r.ok) { console.error(await r.text()); alert('Falha ao renomear coluna.'); return; }
     await reload();
   }
 
   async function onDeleteColumn(columnId, columnName) {
-    const ok = confirm(`Excluir a coluna "${columnName}"? Isso também removerá seus cards.`);
-    if (!ok) return;
-
+    const ok = confirm(`Excluir a coluna "${columnName}"? As tasks serão removidas.`); if (!ok) return;
     const r = await fetch(`${API_BASE}/columns/${columnId}/`, {
-      method: 'DELETE',
-      headers: { 'X-CSRFToken': csrftoken }
+      method: 'DELETE', headers: { 'X-CSRFToken': csrftoken }
     });
-    if (!r.ok && r.status !== 204) {
-      console.error(await r.text());
-      alert('Falha ao excluir coluna.');
-      return;
-    }
+    if (!r.ok && r.status !== 204) { console.error(await r.text()); alert('Falha ao excluir coluna.'); return; }
     await reload();
   }
 
-  // Criar/Editar/Excluir card
-  async function onNewCard(columnId) {
-    const title = prompt('Título do card:');
-    if (!title) return;
+  // ---- Task CRUD ----
+  async function onNewTask(columnId) {
+    const title = prompt('Título da task:'); if (!title) return;
     const description = prompt('Descrição (opcional):') || '';
-    const cards = state.cardsByColumn[columnId] || [];
-    const order = cards.length + 1;
+    const tasks = state.tasksByColumn[columnId] || [];
+    const order = tasks.length + 1;
 
-    const payload = { column: columnId, title, description, order };
-
-    const r = await fetch(`${API_BASE}/cards/`, {
+    const r = await fetch(`${API_BASE}/tasks/`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrftoken },
-      body: JSON.stringify(payload)
+      body: JSON.stringify({ column: columnId, title, description, order })
     });
-    if (!r.ok) {
-      const t = await r.text();
-      console.error(t);
-      alert('Falha ao criar card.');
-      return;
-    }
+    if (!r.ok) { console.error(await r.text()); alert('Falha ao criar task.'); return; }
     await reload();
   }
 
-  async function onEditCard(card) {
-    const newTitle = prompt('Novo título do card:', card.title || '');
-    if (newTitle === null) return; // cancelou
-    const newDesc = prompt('Nova descrição (opcional):', card.description || '');
+  async function onEditTask(task) {
+    const newTitle = prompt('Novo título da task:', task.title || ''); if (newTitle === null) return;
+    const newDesc = prompt('Nova descrição (opcional):', task.description || '');
     const payload = {};
-    if (newTitle !== card.title) payload.title = newTitle;
-    if (newDesc !== card.description) payload.description = newDesc;
+    if (newTitle !== task.title) payload.title = newTitle;
+    if (newDesc !== task.description) payload.description = newDesc;
     if (Object.keys(payload).length === 0) return;
 
-    const r = await fetch(`${API_BASE}/cards/${card.id}/`, {
+    const r = await fetch(`${API_BASE}/tasks/${task.id}/`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrftoken },
       body: JSON.stringify(payload)
     });
-    if (!r.ok) {
-      console.error(await r.text());
-      alert('Falha ao editar card.');
-      return;
-    }
+    if (!r.ok) { console.error(await r.text()); alert('Falha ao editar task.'); return; }
     await reload();
   }
 
-  async function onDeleteCard(cardId, title) {
-    const ok = confirm(`Excluir o card "${title}"?`);
-    if (!ok) return;
-
-    const r = await fetch(`${API_BASE}/cards/${cardId}/`, {
-      method: 'DELETE',
-      headers: { 'X-CSRFToken': csrftoken }
+  async function onDeleteTask(taskId, title) {
+    const ok = confirm(`Excluir a task "${title}"?`); if (!ok) return;
+    const r = await fetch(`${API_BASE}/tasks/${taskId}/`, {
+      method: 'DELETE', headers: { 'X-CSRFToken': csrftoken }
     });
-    if (!r.ok && r.status !== 204) {
-      console.error(await r.text());
-      alert('Falha ao excluir card.');
-      return;
-    }
+    if (!r.ok && r.status !== 204) { console.error(await r.text()); alert('Falha ao excluir task.'); return; }
     await reload();
   }
 
-  // Utilidades
+  // ---- SubTask CRUD ----
+  async function onNewSubTask(taskId) {
+    const title = prompt('Título da SubTask:'); if (!title) return;
+    const description = prompt('Descrição (opcional):') || '';
+    const order = 1; // simples (poderia calcular lendo a task no estado)
+
+    const r = await fetch(`${API_BASE}/subtasks/`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrftoken },
+      body: JSON.stringify({ task: taskId, title, description, order })
+    });
+    if (!r.ok) { console.error(await r.text()); alert('Falha ao criar SubTask.'); return; }
+    await reload();
+  }
+
+  async function toggleSubTaskDone(st) {
+    const r = await fetch(`${API_BASE}/subtasks/${st.id}/`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrftoken },
+      body: JSON.stringify({ is_done: !st.is_done })
+    });
+    if (!r.ok) { console.error(await r.text()); alert('Falha ao atualizar SubTask.'); return; }
+    await reload();
+  }
+
+  async function onEditSubTask(st) {
+    const newTitle = prompt('Novo título da SubTask:', st.title || ''); if (newTitle === null) return;
+    const newDesc = prompt('Nova descrição (opcional):', st.description || '');
+    const payload = {};
+    if (newTitle !== st.title) payload.title = newTitle;
+    if (newDesc !== st.description) payload.description = newDesc;
+    if (Object.keys(payload).length === 0) return;
+
+    const r = await fetch(`${API_BASE}/subtasks/${st.id}/`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrftoken },
+      body: JSON.stringify(payload)
+    });
+    if (!r.ok) { console.error(await r.text()); alert('Falha ao editar SubTask.'); return; }
+    await reload();
+  }
+
+  async function onDeleteSubTask(st) {
+    const ok = confirm(`Excluir a SubTask "${st.title}"?`); if (!ok) return;
+    const r = await fetch(`${API_BASE}/subtasks/${st.id}/`, {
+      method: 'DELETE', headers: { 'X-CSRFToken': csrftoken }
+    });
+    if (!r.ok && r.status !== 204) { console.error(await r.text()); alert('Falha ao excluir SubTask.'); return; }
+    await reload();
+  }
+
+  // ---- Util ----
   async function reload(){
     const data = await fetchBoard();
     render(data);
   }
 
   (async function init(){
-    try {
-      await reload();
-    } catch (e) {
+    try { await reload(); }
+    catch (e) {
       console.error(e);
       document.getElementById('board').innerHTML = '<p>Falha ao carregar o board.</p>';
     }
