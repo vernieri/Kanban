@@ -1,41 +1,58 @@
+# board/serializers.py
+import re
 from rest_framework import serializers
-from .models import Board, Column, Card, Epic, Task, SubTask
+from .models import Board, Column, Epic, Task, SubTask
 
+# ---------- SubTasks ----------
 class SubTaskSerializer(serializers.ModelSerializer):
     class Meta:
         model = SubTask
         fields = '__all__'
 
+
+# ---------- Tasks ----------
 class TaskSerializer(serializers.ModelSerializer):
+    # nested read-only
+    subtasks = SubTaskSerializer(many=True, read_only=True)
+
     class Meta:
         model = Task
-        fields = '__all__'  # já inclui color
+        fields = '__all__'  # id, column, epic, title, description, order, color, subtasks
 
-class EpicSerializer(serializers.ModelSerializer):
-    # Listar tasks do épico (read-only)
-    tasks = TaskSerializer(many=True, read_only=True)
-    class Meta:
-        model = Epic
-        fields = '__all__'
+    # validação opcional para a cor (hex #rgb ou #rrggbb)
+    def validate_color(self, value: str):
+        if value in (None, "",):
+            return value
+        if not re.fullmatch(r"#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})", value.strip()):
+            raise serializers.ValidationError("Use uma cor HEX válida (ex.: #ffcc00).")
+        return value.strip()
 
-# ATUALIZE Column/Board para expor tasks além de cards (enquanto coexistirem)
+
+# ---------- Columns ----------
 class ColumnSerializer(serializers.ModelSerializer):
-    cards = serializers.SerializerMethodField(read_only=True)   # legado
+    # nested read-only
     tasks = TaskSerializer(many=True, read_only=True)
 
     class Meta:
         model = Column
-        fields = '__all__'
+        fields = '__all__'  # id, board, name, order, tasks
 
-    def get_cards(self, obj):
-        # manter compat temporária para o frontend antigo
-        return [{'id': c.id, 'column': c.column_id, 'title': c.title,
-                 'description': c.description, 'order': c.order} for c in obj.cards.all()]
 
+# ---------- Epics ----------
+class EpicSerializer(serializers.ModelSerializer):
+    # listar tasks do épico (read-only)
+    tasks = TaskSerializer(many=True, read_only=True)
+
+    class Meta:
+        model = Epic
+        fields = '__all__'  # id, board, title, description, order, tasks
+
+
+# ---------- Boards ----------
 class BoardSerializer(serializers.ModelSerializer):
     columns = ColumnSerializer(many=True, read_only=True)
     epics = EpicSerializer(many=True, read_only=True)
 
     class Meta:
         model = Board
-        fields = '__all__'
+        fields = '__all__'  # id, name, columns, epics
