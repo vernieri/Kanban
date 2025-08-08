@@ -20,14 +20,22 @@
   </style>
 </head>
 <body>
-<header>Kanban</header>
+<header style="display:flex;align-items:center;gap:12px;justify-content:space-between">
+  <div>Kanban</div>
+  <div>
+    <button id="btnNewColumn" style="padding:8px 12px;border:1px solid #e5e7eb;border-radius:8px;background:#fff;cursor:pointer">
+      + Nova Coluna
+    </button>
+  </div>
+</header>
+
 <div class="container">
   <div id="boardName" class="muted" style="margin-bottom:8px;"></div>
   <div id="board" class="board"></div>
 </div>
 
 <script>
-  // ---- Helpers CSRF (necessário para PATCH no Django) ----
+  // ---- Helpers CSRF (necessário para POST/PATCH no Django) ----
   function getCookie(name){
     const m = document.cookie.match('(^|;)\\s*' + name + '\\s*=\\s*([^;]+)');
     return m ? m.pop() : '';
@@ -41,8 +49,8 @@
   // ---- Estado em memória ----
   let state = { board: null, columns: [], cardsByColumn: {} };
 
+  // Carrega board
   async function fetchBoard() {
-    // Se BOARD_ID vier setado, pega só ele; senão pega o primeiro.
     if (BOARD_ID) {
       const r = await fetch(`${API_BASE}/boards/${BOARD_ID}/`);
       if (!r.ok) throw new Error('Falha ao carregar board');
@@ -58,6 +66,7 @@
     }
   }
 
+  // Renderização
   function render(boardData) {
     state.board = boardData;
     state.columns = boardData.columns || [];
@@ -79,6 +88,15 @@
       header.className = 'column-header';
       header.textContent = `${col.name}`;
 
+      // Ações por coluna (Novo card)
+      const actions = document.createElement('div');
+      actions.style = 'padding:8px 12px;border-bottom:1px solid #f0f2f5;display:flex;gap:8px';
+      const btnAddCard = document.createElement('button');
+      btnAddCard.textContent = '+ Novo card';
+      btnAddCard.style = 'padding:6px 10px;border:1px solid #e5e7eb;border-radius:8px;background:#fff;cursor:pointer';
+      btnAddCard.addEventListener('click', () => onNewCard(col.id));
+      actions.appendChild(btnAddCard);
+
       const cardsEl = document.createElement('div');
       cardsEl.className = 'cards';
       cardsEl.dataset.columnId = col.id;
@@ -92,6 +110,7 @@
       });
 
       colEl.appendChild(header);
+      colEl.appendChild(actions);   // botão "Novo card"
       colEl.appendChild(cardsEl);
       root.appendChild(colEl);
     });
@@ -120,6 +139,7 @@
     return el;
   }
 
+  // Drag-and-drop
   let dragging = null; // {el, fromColumnId}
 
   function onDragStart(e) {
@@ -148,7 +168,7 @@
     const currentCards = Array.from(e.currentTarget.querySelectorAll('.card'));
     const newOrder = currentCards.length + (dragging ? 0 : 1); // se o card ainda não foi inserido no DOM
 
-    // Atualiza visual imediatamente (optimistic UI)
+    // UI otimista
     if (dragging && dragging.el) {
       e.currentTarget.appendChild(dragging.el);
       dragging.el.dataset.columnId = targetColumnId;
@@ -163,18 +183,69 @@
         },
         body: JSON.stringify({ column: Number(targetColumnId), order: newOrder })
       });
-      if (!r.ok) {
-        throw new Error('Falha ao mover card');
-      }
-      // Opcional: recarregar board para refletir ordenação canônica
+      if (!r.ok) throw new Error('Falha ao mover card');
       await reload();
     } catch (err) {
       console.error(err);
-      // fallback: recarrega para não deixar UI divergente em caso de erro
       await reload();
     }
   }
 
+  // Criar nova coluna
+  document.addEventListener('click', (e) => {
+    if (e.target && e.target.id === 'btnNewColumn') onNewColumn();
+  });
+
+  async function onNewColumn() {
+    if (!state.board || !state.board.id) {
+      alert('Crie um board pelo admin antes.');
+      return;
+    }
+    const name = prompt('Nome da nova coluna:');
+    if (!name) return;
+
+    const order = (state.columns?.length || 0) + 1;
+    const payload = { board: state.board.id, name, order };
+
+    const r = await fetch(`${API_BASE}/columns/`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrftoken },
+      body: JSON.stringify(payload)
+    });
+    if (!r.ok) {
+      const t = await r.text();
+      console.error(t);
+      alert('Falha ao criar coluna.');
+      return;
+    }
+    await reload();
+  }
+
+  // Criar novo card
+  async function onNewCard(columnId) {
+    const title = prompt('Título do card:');
+    if (!title) return;
+    const description = prompt('Descrição (opcional):') || '';
+    const cards = state.cardsByColumn[columnId] || [];
+    const order = cards.length + 1;
+
+    const payload = { column: columnId, title, description, order };
+
+    const r = await fetch(`${API_BASE}/cards/`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrftoken },
+      body: JSON.stringify(payload)
+    });
+    if (!r.ok) {
+      const t = await r.text();
+      console.error(t);
+      alert('Falha ao criar card.');
+      return;
+    }
+    await reload();
+  }
+
+  // Utilidades
   async function reload(){
     const data = await fetchBoard();
     render(data);
