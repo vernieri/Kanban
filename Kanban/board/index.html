@@ -1,0 +1,193 @@
+<!doctype html>
+<html lang="pt-br">
+<head>
+  <meta charset="utf-8" />
+  <title>Kanban</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <style>
+    :root { font-family: system-ui, Arial, sans-serif; }
+    body { margin: 0; background:#f6f7fb; }
+    header { padding:16px 24px; background:#101828; color:#fff; font-weight:600; }
+    .container { padding:24px; overflow-x:auto; }
+    .board { display:flex; gap:16px; min-height:70vh; }
+    .column { background:#fff; border:1px solid #e5e7eb; border-radius:10px; width:320px; flex:0 0 320px; display:flex; flex-direction:column; }
+    .column-header { padding:12px 14px; border-bottom:1px solid #f0f2f5; font-weight:600; }
+    .cards { padding:12px; display:flex; flex-direction:column; gap:10px; min-height:80px; }
+    .card { background:#fafafa; border:1px solid #e5e7eb; border-radius:8px; padding:10px 12px; cursor:grab; }
+    .card:active { cursor:grabbing; }
+    .drop-target { outline:2px dashed #9ca3af; outline-offset:-6px; }
+    .muted { color:#6b7280; font-size:12px; }
+  </style>
+</head>
+<body>
+<header>Kanban</header>
+<div class="container">
+  <div id="boardName" class="muted" style="margin-bottom:8px;"></div>
+  <div id="board" class="board"></div>
+</div>
+
+<script>
+  // ---- Helpers CSRF (necessário para PATCH no Django) ----
+  function getCookie(name){
+    const m = document.cookie.match('(^|;)\\s*' + name + '\\s*=\\s*([^;]+)');
+    return m ? m.pop() : '';
+  }
+  const csrftoken = getCookie('csrftoken');
+
+  // ---- Config ----
+  const API_BASE = '/api';   // ajuste se tiver prefixo diferente
+  const BOARD_ID = null;     // se quiser travar num board específico (ex: 1)
+
+  // ---- Estado em memória ----
+  let state = { board: null, columns: [], cardsByColumn: {} };
+
+  async function fetchBoard() {
+    // Se BOARD_ID vier setado, pega só ele; senão pega o primeiro.
+    if (BOARD_ID) {
+      const r = await fetch(`${API_BASE}/boards/${BOARD_ID}/`);
+      if (!r.ok) throw new Error('Falha ao carregar board');
+      return await r.json();
+    } else {
+      const r = await fetch(`${API_BASE}/boards/`);
+      if (!r.ok) throw new Error('Falha ao listar boards');
+      const list = await r.json();
+      if (!Array.isArray(list) || list.length === 0) {
+        return { name: 'Sem boards', columns: [] };
+      }
+      return list[0];
+    }
+  }
+
+  function render(boardData) {
+    state.board = boardData;
+    state.columns = boardData.columns || [];
+    state.cardsByColumn = {};
+    state.columns.forEach(col => {
+      state.cardsByColumn[col.id] = (col.cards || []).slice().sort((a,b)=>a.order-b.order);
+    });
+
+    document.getElementById('boardName').textContent = `Board: ${boardData.name}`;
+    const root = document.getElementById('board');
+    root.innerHTML = '';
+
+    state.columns.forEach(col => {
+      const colEl = document.createElement('div');
+      colEl.className = 'column';
+      colEl.dataset.columnId = col.id;
+
+      const header = document.createElement('div');
+      header.className = 'column-header';
+      header.textContent = `${col.name}`;
+
+      const cardsEl = document.createElement('div');
+      cardsEl.className = 'cards';
+      cardsEl.dataset.columnId = col.id;
+      cardsEl.addEventListener('dragover', onDragOver);
+      cardsEl.addEventListener('drop', onDrop);
+      cardsEl.addEventListener('dragenter', e => cardsEl.classList.add('drop-target'));
+      cardsEl.addEventListener('dragleave', e => cardsEl.classList.remove('drop-target'));
+
+      (state.cardsByColumn[col.id] || []).forEach(card => {
+        cardsEl.appendChild(renderCard(card));
+      });
+
+      colEl.appendChild(header);
+      colEl.appendChild(cardsEl);
+      root.appendChild(colEl);
+    });
+  }
+
+  function renderCard(card) {
+    const el = document.createElement('div');
+    el.className = 'card';
+    el.draggable = true;
+    el.dataset.cardId = card.id;
+    el.dataset.columnId = card.column;
+    el.addEventListener('dragstart', onDragStart);
+    el.addEventListener('dragend', onDragEnd);
+
+    const title = document.createElement('div');
+    title.textContent = card.title;
+    el.appendChild(title);
+
+    if (card.description) {
+      const desc = document.createElement('div');
+      desc.className = 'muted';
+      desc.textContent = card.description;
+      el.appendChild(desc);
+    }
+
+    return el;
+  }
+
+  let dragging = null; // {el, fromColumnId}
+
+  function onDragStart(e) {
+    dragging = { el: e.currentTarget, fromColumnId: e.currentTarget.dataset.columnId };
+    e.dataTransfer.setData('text/plain', e.currentTarget.dataset.cardId);
+    e.dataTransfer.effectAllowed = 'move';
+  }
+
+  function onDragEnd() {
+    dragging = null;
+    document.querySelectorAll('.drop-target').forEach(n => n.classList.remove('drop-target'));
+  }
+
+  function onDragOver(e) {
+    e.preventDefault(); // habilita drop
+    e.dataTransfer.dropEffect = 'move';
+  }
+
+  async function onDrop(e) {
+    e.preventDefault();
+    const targetColumnId = e.currentTarget.dataset.columnId;
+    const cardId = e.dataTransfer.getData('text/plain');
+    if (!cardId || !targetColumnId) return;
+
+    // Calcula "order" básico: joga no final da coluna alvo
+    const currentCards = Array.from(e.currentTarget.querySelectorAll('.card'));
+    const newOrder = currentCards.length + (dragging ? 0 : 1); // se o card ainda não foi inserido no DOM
+
+    // Atualiza visual imediatamente (optimistic UI)
+    if (dragging && dragging.el) {
+      e.currentTarget.appendChild(dragging.el);
+      dragging.el.dataset.columnId = targetColumnId;
+    }
+
+    try {
+      const r = await fetch(`${API_BASE}/cards/${cardId}/move/`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-CSRFToken': csrftoken
+        },
+        body: JSON.stringify({ column: Number(targetColumnId), order: newOrder })
+      });
+      if (!r.ok) {
+        throw new Error('Falha ao mover card');
+      }
+      // Opcional: recarregar board para refletir ordenação canônica
+      await reload();
+    } catch (err) {
+      console.error(err);
+      // fallback: recarrega para não deixar UI divergente em caso de erro
+      await reload();
+    }
+  }
+
+  async function reload(){
+    const data = await fetchBoard();
+    render(data);
+  }
+
+  (async function init(){
+    try {
+      await reload();
+    } catch (e) {
+      console.error(e);
+      document.getElementById('board').innerHTML = '<p>Falha ao carregar o board.</p>';
+    }
+  })();
+</script>
+</body>
+</html>
