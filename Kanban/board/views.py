@@ -1,3 +1,4 @@
+from rest_framework import serializers
 from rest_framework import viewsets, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
@@ -5,9 +6,11 @@ from django.shortcuts import render
 
 from .models import Board, Column, Card, Epic, Task, SubTask
 from .serializers import (
-    BoardSerializer, ColumnSerializer, EpicSerializer,
-    TaskSerializer, SubTaskSerializer
+    BoardSerializer, ColumnSerializer,
+    EpicSerializer, TaskSerializer, SubTaskSerializer
 )
+
+
 
 def index(request):
     return render(request, 'board/index.html')
@@ -44,6 +47,21 @@ class TaskViewSet(viewsets.ModelViewSet):
         task.order = order
         task.save()
         return Response(TaskSerializer(task).data, status=status.HTTP_200_OK)
+
+
+class ColumnSerializer(serializers.ModelSerializer):
+    tasks = TaskSerializer(many=True, read_only=True)
+
+    class Meta:
+        model = Column
+        fields = '__all__'
+
+class BoardSerializer(serializers.ModelSerializer):
+    columns = ColumnSerializer(many=True, read_only=True)
+
+    class Meta:
+        model = Board
+        fields = '__all__'
 
 
 # ===== NOVO: SubTasks =====
