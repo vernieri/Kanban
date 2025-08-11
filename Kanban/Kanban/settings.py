@@ -1,6 +1,8 @@
 """
 Django settings for Kanban project.
 Compatível com Django 4.2.x (funciona também no 2.2, mas recomendo atualizar).
+docker compose -f docker-compose.dev.yml up --build
+docker compose --env-file .env.prod up --build -d
 """
 
 import os
