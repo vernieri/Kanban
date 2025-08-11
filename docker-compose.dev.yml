@@ -1,0 +1,16 @@
+version: "3.9"
+services:
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: kanban_dev
+    env_file: .env.dev
+    working_dir: /app/Kanban
+    volumes:
+      - ./Kanban:/app/Kanban   # hot-reload do código
+    ports:
+      - "8000:8000"
+    command: >
+      sh -c "python manage.py migrate &&
+             python manage.py runserver 0.0.0.0:8000"
