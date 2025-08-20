@@ -1,169 +1,135 @@
-# 🗂 Kanban Board – Django REST API + Frontend
+# Kanban Project
 
-Sistema de **Kanban Web** desenvolvido em **Django + Django REST Framework** com suporte a **Epics, Tasks e SubTasks**.  
-Permite criar quadros, colunas, tasks, subtasks e mover cards por **drag & drop**.
-
-## 🚀 Funcionalidades
-
-- CRUD completo de **Boards**, **Colunas**, **Tasks** e **SubTasks**
-- Estrutura hierárquica:
-  - **Epic** → várias Tasks
-  - **Task** → várias SubTasks
-- Reordenação de Tasks via **drag and drop**
-- Edição e exclusão **inline**
-- Suporte a cores nas Tasks
-- Backend em **Django REST Framework**
-- Frontend em **HTML + JavaScript**
-- Suporte a **CORS**
-- **Docker** e **docker-compose** para fácil deploy
-- Banco padrão SQLite (dev) e PostgreSQL (prod)
+A lightweight **Kanban board** built with **Django (backend)**, **Vue.js (frontend)**, and **PostgreSQL**.  
+It supports **Boards, Columns, Tasks, Subtasks, and Epics**, allowing teams to manage their workflows in a structured way.
 
 ---
 
-## 📂 Estrutura do Projeto
+## Features
+
+- 🗂️ **Boards & Columns** – organize work visually
+- ✅ **Tasks & Subtasks** – track granular progress
+- 🧩 **Epics** – group multiple tasks under one big goal
+- 🎨 **Task Coloring** – customize cards with colors
+- ↔️ **Drag & Drop** – move tasks across columns
+- ✏️ **Edit & Delete** – update or remove tasks/columns directly
+- 🌐 **REST API** – built with Django REST Framework
+- 🚀 **Dockerized Deployment** – Nginx + Gunicorn + PostgreSQL
+- 🔒 **CORS + CSRF protection**
+
+---
+
+## Project Structure
 
 ```
 Kanban/
-├── board/                  # App principal
-│   ├── migrations/
-│   ├── models.py           # Models: Board, Column, Task, SubTask
-│   ├── serializers.py      # Serializers DRF
-│   ├── views.py            # Views e API endpoints
-│   ├── urls.py             # Rotas do app
-│   └── templates/board/    # HTML frontend
-│       └── index.html
-├── Kanban/                 # Configurações Django
-│   ├── settings.py
-│   ├── urls.py
-│   └── wsgi.py
-├── staticfiles/            # Arquivos estáticos coletados
-├── Dockerfile
-├── docker-compose.yml
-└── README.md
+├── board/          # Django app (models, views, serializers, urls)
+├── Kanban/         # Django project settings and wsgi
+├── frontend/       # Vue.js frontend app
+├── docker/         # Docker-related files (nginx, gunicorn, db)
+├── manage.py       # Django entry point
+└── README.md       # Documentation
 ```
 
 ---
 
-## ⚙️ Instalação (Local)
+## Requirements
 
-### 1️⃣ Clonar repositório
-```bash
-git clone https://github.com/seuusuario/kanban.git
-cd kanban
-```
-
-### 2️⃣ Criar virtualenv e instalar dependências
-```bash
-python -m venv venv
-source venv/bin/activate  # Linux/macOS
-venv\Scripts\activate     # Windows
-
-pip install -r requirements.txt
-```
-
-### 3️⃣ Configurar banco de dados
-```bash
-python manage.py migrate
-```
-
-### 4️⃣ Criar superusuário (opcional)
-```bash
-python manage.py createsuperuser
-```
-
-### 5️⃣ Rodar servidor local
-```bash
-python manage.py runserver
-```
-Acesse: **http://127.0.0.1:8000/**
+- Python 3.8+
+- Node.js 16+ (for Vue.js frontend)
+- Docker & Docker Compose
 
 ---
 
-## 🐳 Rodando com Docker
+## Installation (Development)
 
-### 1️⃣ Build da imagem
-```bash
-docker-compose build
+1. Clone the repository:
+   ```bash
+   git clone https://github.com/yourusername/kanban.git
+   cd kanban
+   ```
+
+2. Create virtual environment and install dependencies:
+   ```bash
+   python3 -m venv venv
+   source venv/bin/activate
+   pip install -r requirements.txt
+   ```
+
+3. Run database migrations:
+   ```bash
+   python manage.py migrate
+   ```
+
+4. Start the development server:
+   ```bash
+   python manage.py runserver
+   ```
+
+5. Run Vue.js frontend (inside `frontend/`):
+   ```bash
+   npm install
+   npm run serve
+   ```
+
+---
+
+## Running with Docker
+
+1. Build and start containers:
+   ```bash
+   docker-compose up --build
+   ```
+
+2. The services will be available at:
+   - **Backend API** → http://localhost:8000/api/
+   - **Frontend** → http://localhost:8080/
+   - **Nginx (reverse proxy)** → http://localhost/
+
+3. To stop containers:
+   ```bash
+   docker-compose down
+   ```
+
+---
+
+## API Endpoints
+
+- `GET /api/boards/` – list boards
+- `POST /api/boards/` – create board
+- `GET /api/columns/` – list columns
+- `POST /api/columns/` – create column
+- `GET /api/tasks/` – list tasks
+- `POST /api/tasks/` – create task
+- `PATCH /api/tasks/{id}/` – update task (color, title, etc.)
+- `DELETE /api/tasks/{id}/` – delete task
+
+---
+
+## Environment Variables
+
+Configure in `.env` file (for Docker):
+
 ```
-
-### 2️⃣ Subir containers
-```bash
-docker-compose up -d
-```
-
-### 3️⃣ Criar banco e aplicar migrações
-```bash
-docker-compose exec web python manage.py migrate
-```
-
-### 4️⃣ Criar superusuário (opcional)
-```bash
-docker-compose exec web python manage.py createsuperuser
+POSTGRES_DB=kanban
+POSTGRES_USER=kanban
+POSTGRES_PASSWORD=kanban
+DEBUG=1
+SECRET_KEY=replace_me_in_production
+ALLOWED_HOSTS=*
 ```
 
 ---
 
-## 🌐 Endpoints da API
+## Deployment Notes
 
-### Boards
-| Método | Endpoint      | Descrição          |
-|--------|--------------|--------------------|
-| GET    | `/api/boards/` | Lista todos boards |
-| POST   | `/api/boards/` | Cria novo board    |
-
-### Columns
-| Método | Endpoint        | Descrição               |
-|--------|----------------|-------------------------|
-| GET    | `/api/columns/` | Lista colunas           |
-| POST   | `/api/columns/` | Cria nova coluna        |
-| PATCH  | `/api/columns/{id}/` | Edita coluna        |
-| DELETE | `/api/columns/{id}/` | Remove coluna       |
-
-### Tasks
-| Método | Endpoint       | Descrição               |
-|--------|---------------|-------------------------|
-| POST   | `/api/tasks/`  | Cria task               |
-| PATCH  | `/api/tasks/{id}/` | Edita task           |
-| PATCH  | `/api/tasks/{id}/move/` | Move task       |
-| DELETE | `/api/tasks/{id}/` | Remove task          |
-
-### SubTasks
-| Método | Endpoint          | Descrição              |
-|--------|------------------|------------------------|
-| POST   | `/api/subtasks/`  | Cria subtask           |
-| PATCH  | `/api/subtasks/{id}/` | Edita subtask       |
-| DELETE | `/api/subtasks/{id}/` | Remove subtask      |
+- Use **Gunicorn** + **Nginx** for production
+- Set `DEBUG=0` and a secure `SECRET_KEY`
+- Configure persistent volume for PostgreSQL
+- Enable HTTPS in Nginx
 
 ---
 
-## 🖥️ Frontend
+## License
 
-O **`index.html`** localizado em `board/templates/board/index.html` faz chamadas AJAX para a API usando `fetch()` e renderiza o Kanban com:
-
-- **Drag and Drop** para mover tasks
-- Botões para criar, editar e excluir
-- Seção expansível de **SubTasks**
-
----
-
-## 🔐 Variáveis de Ambiente
-
-| Variável                | Padrão        | Descrição                  |
-|-------------------------|--------------|----------------------------|
-| `DJANGO_DEBUG`          | `1`          | Ativa modo debug           |
-| `DJANGO_SECRET_KEY`     | `unsafe-dev` | Chave secreta Django       |
-| `DJANGO_ALLOWED_HOSTS`  | `*`          | Hosts permitidos           |
-| `DB_ENGINE`             | `sqlite`     | Banco (`sqlite` ou `postgres`) |
-| `POSTGRES_DB`           | `kanban`     | Nome do banco (Postgres)   |
-| `POSTGRES_USER`         | `kanban`     | Usuário do banco           |
-| `POSTGRES_PASSWORD`     | `senha`      | Senha do banco             |
-| `POSTGRES_HOST`         | `db`         | Host do Postgres           |
-| `POSTGRES_PORT`         | `5432`       | Porta do Postgres          |
-| `CORS_ALLOW_ALL`        | `1`          | Libera todos domínios CORS |
-
----
-
-## 📜 Licença
-
-Este projeto é distribuído sob a licença MIT.  
-Sinta-se livre para usar e modificar.
+MIT License. Free to use and modify.
